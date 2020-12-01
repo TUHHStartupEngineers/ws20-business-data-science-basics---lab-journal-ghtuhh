@@ -1,5 +1,5 @@
 ---
-title: "Journal (reproducible report)"
+title: "Journal"
 author: "Roman Neubauer"
 date: "2020-11-05"
 output:
