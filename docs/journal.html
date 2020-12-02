@@ -411,10 +411,166 @@ div.tocify {
 
 
 <p><strong>IMPORTANT:</strong> You can delete everything in here and start fresh. You might want to start by not deleting anything above this line until you know what that stuff is doing.</p>
+<p>Last compiled: 2020-12-02</p>
 <p>This is an <code>.Rmd</code> file. It is plain text with special features. Any time you write just like this, it will be compiled to normal text in the website. If you put a # in front of your text, it will create a top level-header.</p>
-<div id="my-first-post" class="section level1">
-<h1><span class="header-section-number">1</span> My first post</h1>
-<p>Last compiled: 2020-12-01</p>
+<div id="introduction-to-the-tidyverse" class="section level1">
+<h1><span class="header-section-number">1</span> Introduction to the tidyverse</h1>
+<div id="challenges" class="section level2">
+<h2><span class="header-section-number">1.1</span> Challenges</h2>
+<div id="analysis-of-bikes-sales-by-states-and-cities-in-germany" class="section level3">
+<h3><span class="header-section-number">1.1.1</span> Analysis of bikes sales by states and cities in Germany</h3>
+<p>Problem: Analysis of sales by location: display the total revenue of all bikes shops across a state or city in a bar plot.</p>
+<ol style="list-style-type: decimal">
+<li>Load needed libraries</li>
+</ol>
+<pre class="r"><code>library(&quot;tidyverse&quot;)
+library(&quot;readxl&quot;)
+library(&quot;lubridate&quot;)</code></pre>
+<ol start="2" style="list-style-type: decimal">
+<li>Importing the data from .xlsx files</li>
+</ol>
+<pre class="r"><code>bikes &lt;- read_excel(&quot;00_data/01_bike_sales/01_raw_data/bikes.xlsx&quot;) %&gt;% set_names(names(.) %&gt;% str_replace_all(&quot;\\.&quot;, &quot;_&quot;)) %&gt;% select(bike_id, model, price)
+shops &lt;- read_excel(&quot;00_data/01_bike_sales/01_raw_data/bikeshops.xlsx&quot;) %&gt;% set_names(names(.) %&gt;% str_replace_all(&quot;\\.&quot;, &quot;_&quot;))
+orders &lt;- read_excel(&quot;00_data/01_bike_sales/01_raw_data/orderlines.xlsx&quot;) %&gt;% select(- ...1) %&gt;% set_names(names(.) %&gt;% str_replace_all(&quot;\\.&quot;, &quot;_&quot;))</code></pre>
+<p>in the same step some unneeded columns were dropped and all dots in column names were replaced by underscores.</p>
+<ol start="3" style="list-style-type: decimal">
+<li>Joining the data sets and wrangling</li>
+</ol>
+<pre class="r"><code>orders_shops_joined &lt;- left_join(orders, shops, by=c(&quot;customer_id&quot; = &quot;bikeshop_id&quot;)) %&gt;% select(-lat, -lng, -order_line)
+
+joined_data &lt;- left_join(orders_shops_joined, bikes, by=c(&quot;product_id&quot;=&quot;bike_id&quot;)) %&gt;% 
+  #separating city and state
+  separate(col=location, into=c(&quot;city&quot;, &quot;state&quot;), sep=&quot;, &quot;) %&gt;% 
+  #calculating total order price
+  mutate(total_price = price*quantity) %&gt;% 
+  #adding year of the sale
+  mutate(year = year(order_date))</code></pre>
+<ol start="4" style="list-style-type: decimal">
+<li>Manipulating</li>
+</ol>
+<p>getting the sales per state:</p>
+<pre class="r"><code>sales_by_state &lt;- joined_data %&gt;% 
+  #select needed columns
+  select(state, total_price) %&gt;% 
+  #grouping by state
+  group_by(state) %&gt;% 
+  #adding all revenues for the given states
+  summarize(revenue = sum(total_price)) %&gt;% 
+  #formatting the revenue 
+  mutate(revenue_text = scales::dollar(revenue, big.mark = &quot;.&quot;, decimal.mark = &quot;,&quot;, prefix = &quot;&quot;, suffix = &quot; €&quot;))</code></pre>
+<p>getting the sales by city</p>
+<pre class="r"><code>sales_by_city &lt;- joined_data %&gt;% 
+  #select needed columns
+  select(city, total_price) %&gt;% 
+  #grouping by city
+  group_by(city) %&gt;% 
+  #adding all revenues for the given city
+  summarize(revenue = sum(total_price)) %&gt;% 
+  #formatting the revenue
+  mutate(revenue_text = scales::dollar(revenue, big.mark = &quot;.&quot;, decimal.mark = &quot;,&quot;, prefix = &quot;&quot;, suffix = &quot; €&quot;))</code></pre>
+<ol start="5" style="list-style-type: decimal">
+<li>Plotting the data</li>
+</ol>
+<p>for the sales by state:</p>
+<pre class="r"><code>sales_by_state %&gt;%
+  
+  # Setup canvas with the columns states (x-axis) and revenue (y-axis)
+  ggplot(aes(x = state, y = revenue)) +
+  
+  # Geometries
+  geom_col(fill = &quot;#2DC6D6&quot;) +
+  geom_label(aes(label = revenue_text), size=2) +
+  
+  # Formatting
+  scale_y_continuous(labels = scales::dollar_format(big.mark = &quot;.&quot;, 
+                                                    decimal.mark = &quot;,&quot;, 
+                                                    prefix = &quot;&quot;, 
+                                                    suffix = &quot; €&quot;)) +
+  
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  
+  labs(
+    title    = &quot;Revenue by state over 5 years&quot;,
+    x = &quot;State&quot;,
+    y = &quot;Revenue&quot;
+  )</code></pre>
+<p><img src="journal_files/figure-html/unnamed-chunk-6-1.png" width="672" /></p>
+<p>for the sales by city:</p>
+<pre class="r"><code>sales_by_city %&gt;%
+  
+  # Setup canvas with the columns states (x-axis) and revenue (y-axis)
+  ggplot(aes(x = city, y = revenue)) +
+  
+  # Geometries
+  geom_col(fill = &quot;#2DC6D6&quot;) +
+  geom_label(aes(label = revenue_text), size=2) +
+  
+  # Formatting
+  scale_y_continuous(labels = scales::dollar_format(big.mark = &quot;.&quot;, 
+                                                    decimal.mark = &quot;,&quot;, 
+                                                    prefix = &quot;&quot;, 
+                                                    suffix = &quot; €&quot;)) +
+  
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  
+  labs(
+    title    = &quot;Revenue by city over 5 years&quot;,
+    x = &quot;City&quot;,
+    y = &quot;Revenue&quot;
+  )</code></pre>
+<p><img src="journal_files/figure-html/unnamed-chunk-7-1.png" width="672" /></p>
+</div>
+<div id="analysis-of-bike-sales-by-state-and-year" class="section level3">
+<h3><span class="header-section-number">1.1.2</span> Analysis of bike sales by state and year</h3>
+<p>Steps 1 to 3 remain the same as in 1.</p>
+<ol start="4" style="list-style-type: decimal">
+<li>Manipulating getting the sales by state and year:</li>
+</ol>
+<pre class="r"><code>sales_by_state_and_year &lt;- joined_data %&gt;% 
+  #select needed columns
+  select(state, year, total_price) %&gt;% 
+  #grouping by state and year
+  group_by(state, year) %&gt;% 
+  #adding all revenues for a given state and year
+  summarize(revenue = sum(total_price)) %&gt;% 
+  #formatting the revenue
+  mutate(revenue_text = scales::dollar(revenue, big.mark = &quot;.&quot;, decimal.mark = &quot;,&quot;, prefix = &quot;&quot;, suffix = &quot; €&quot;))</code></pre>
+<ol start="5" style="list-style-type: decimal">
+<li>Plotting</li>
+</ol>
+<pre class="r"><code>sales_by_state_and_year %&gt;%
+  
+  # Set up x, y, fill
+  ggplot(aes(x = year, y = revenue, fill = state)) +
+  
+  # Geometries
+  geom_col() +
+  
+  # Facet
+  facet_wrap(~ state) +
+  
+  # Formatting
+  scale_y_continuous(labels = scales::dollar_format(big.mark = &quot;.&quot;, 
+                                                    decimal.mark = &quot;,&quot;, 
+                                                    prefix = &quot;&quot;, 
+                                                    suffix = &quot; €&quot;)) +
+  
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  
+  labs(
+    title = &quot;Revenue by state and year&quot;,
+    subtitle = &quot;displayed revenue for all  bikeshops in a given state&quot;,
+    fill = &quot;States&quot;
+  )</code></pre>
+<p><img src="journal_files/figure-html/plot-1.png" width="1152" /></p>
+</div>
+</div>
+</div>
+<div id="data-acquisition" class="section level1">
+<h1><span class="header-section-number">2</span> Data Acquisition</h1>
+</div>
+<div id="examples" class="section level1">
+<h1><span class="header-section-number">3</span> Examples</h1>
 <p>Notice that whatever you define as a top level header, automatically gets put into the table of contents bar on the left.</p>
 <p>Adding this code to my first post:</p>
 <pre class="r"><code>numbers &lt;- 1:1000
@@ -425,26 +581,26 @@ numbers[1:10]
 # This will plot a histogram of 100 random elements of the vector numbers
 hist(sample(numbers, 100, replace = T))</code></pre>
 <div id="second-level-header" class="section level2">
-<h2><span class="header-section-number">1.1</span> Second level header</h2>
+<h2><span class="header-section-number">3.1</span> Second level header</h2>
 <p>You can add more headers by adding more hashtags. These won’t be put into the table of contents</p>
 <div id="third-level-header" class="section level3">
-<h3><span class="header-section-number">1.1.1</span> third level header</h3>
+<h3><span class="header-section-number">3.1.1</span> third level header</h3>
 <p>Here’s an even lower level header</p>
 </div>
 </div>
 </div>
 <div id="my-second-post-note-the-order" class="section level1">
-<h1><span class="header-section-number">2</span> My second post (note the order)</h1>
-<p>Last compiled: 2020-12-01</p>
+<h1><span class="header-section-number">4</span> My second post (note the order)</h1>
+<p>Last compiled: 2020-12-02</p>
 <p>I’m writing this tutorial going from the top down. And, this is how it will be printed. So, notice the second post is second in the list. If you want your most recent post to be at the top, then make a new post starting at the top. If you want the oldest first, do, then keep adding to the bottom</p>
 </div>
 <div id="adding-r-stuff" class="section level1">
-<h1><span class="header-section-number">3</span> Adding R stuff</h1>
+<h1><span class="header-section-number">5</span> Adding R stuff</h1>
 <p>So far this is just a blog where you can write in plain text and serve your writing to a webpage. One of the main purposes of this lab journal is to record your progress learning R. The reason I am asking you to use this process is because you can both make a website, and a lab journal, and learn R all in R-studio. This makes everything really convenient and in the same place.</p>
 <p>So, let’s say you are learning how to make a histogram in R. For example, maybe you want to sample 100 numbers from a normal distribution with mean = 0, and standard deviation = 1, and then you want to plot a histogram. You can do this right here by using an r code block, like this:</p>
 <pre class="r"><code>samples &lt;- rnorm(100, mean=0, sd=1)
 hist(samples)</code></pre>
-<p><img src="journal_files/figure-html/unnamed-chunk-2-1.png" width="672" /></p>
+<p><img src="journal_files/figure-html/unnamed-chunk-10-1.png" width="672" /></p>
 <p>When you knit this R Markdown document, you will see that the histogram is printed to the page, along with the R code. This document can be set up to hide the R code in the webpage, just delete the comment (hashtag) from the cold folding option in the yaml header up top. For purposes of letting yourself see the code, and me see the code, best to keep it the way that it is. You’ll learn that all of these things and more can be customized in each R code block.</p>
 </div>
 

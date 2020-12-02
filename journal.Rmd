@@ -18,12 +18,182 @@ knitr::opts_chunk$set(message=FALSE,warning=FALSE, cache=TRUE)
 
 **IMPORTANT:** You can delete everything in here and start fresh. You might want to start by not deleting anything above this line until you know what that stuff is doing.
 
-This is an `.Rmd` file. It is plain text with special features. Any time you write just like this, it will be compiled to normal text in the website. If you put a \# in front of your text, it will create a top level-header.
-
-# My first post
-
 Last compiled: `r Sys.Date()`
 
+This is an `.Rmd` file. It is plain text with special features. Any time you write just like this, it will be compiled to normal text in the website. If you put a \# in front of your text, it will create a top level-header.
+
+# Introduction to the tidyverse
+## Challenges
+### Analysis of bikes sales by states and cities in Germany
+Problem: Analysis of sales by location: display the total revenue of all bikes shops across a state or city in a bar plot.
+
+
+1. Load needed libraries
+```{r, eval = TRUE}
+library("tidyverse")
+library("readxl")
+library("lubridate")
+```
+
+
+2. Importing the data from .xlsx files
+```{r, eval = TRUE}
+bikes <- read_excel("00_data/01_bike_sales/01_raw_data/bikes.xlsx") %>% set_names(names(.) %>% str_replace_all("\\.", "_")) %>% select(bike_id, model, price)
+shops <- read_excel("00_data/01_bike_sales/01_raw_data/bikeshops.xlsx") %>% set_names(names(.) %>% str_replace_all("\\.", "_"))
+orders <- read_excel("00_data/01_bike_sales/01_raw_data/orderlines.xlsx") %>% select(- ...1) %>% set_names(names(.) %>% str_replace_all("\\.", "_"))
+```
+in the same step some unneeded columns were dropped and all dots in column names were replaced by underscores.
+
+
+3. Joining the data sets and wrangling
+```{r, eval = TRUE}
+orders_shops_joined <- left_join(orders, shops, by=c("customer_id" = "bikeshop_id")) %>% select(-lat, -lng, -order_line)
+
+joined_data <- left_join(orders_shops_joined, bikes, by=c("product_id"="bike_id")) %>% 
+  #separating city and state
+  separate(col=location, into=c("city", "state"), sep=", ") %>% 
+  #calculating total order price
+  mutate(total_price = price*quantity) %>% 
+  #adding year of the sale
+  mutate(year = year(order_date))
+```
+
+
+4. Manipulating
+
+getting the sales per state:
+```{r, eval = TRUE}
+sales_by_state <- joined_data %>% 
+  #select needed columns
+  select(state, total_price) %>% 
+  #grouping by state
+  group_by(state) %>% 
+  #adding all revenues for the given states
+  summarize(revenue = sum(total_price)) %>% 
+  #formatting the revenue 
+  mutate(revenue_text = scales::dollar(revenue, big.mark = ".", decimal.mark = ",", prefix = "", suffix = " €"))
+```
+
+getting the sales by city
+````{r, eval=TRUE}
+sales_by_city <- joined_data %>% 
+  #select needed columns
+  select(city, total_price) %>% 
+  #grouping by city
+  group_by(city) %>% 
+  #adding all revenues for the given city
+  summarize(revenue = sum(total_price)) %>% 
+  #formatting the revenue
+  mutate(revenue_text = scales::dollar(revenue, big.mark = ".", decimal.mark = ",", prefix = "", suffix = " €"))
+````
+
+5. Plotting the data
+
+for the sales by state:
+```{r, eval=TRUE}
+
+sales_by_state %>%
+  
+  # Setup canvas with the columns states (x-axis) and revenue (y-axis)
+  ggplot(aes(x = state, y = revenue)) +
+  
+  # Geometries
+  geom_col(fill = "#2DC6D6") +
+  geom_label(aes(label = revenue_text), size=2) +
+  
+  # Formatting
+  scale_y_continuous(labels = scales::dollar_format(big.mark = ".", 
+                                                    decimal.mark = ",", 
+                                                    prefix = "", 
+                                                    suffix = " €")) +
+  
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  
+  labs(
+    title    = "Revenue by state over 5 years",
+    x = "State",
+    y = "Revenue"
+  )
+```
+
+for the sales by city:
+```{r, eval=TRUE}
+sales_by_city %>%
+  
+  # Setup canvas with the columns states (x-axis) and revenue (y-axis)
+  ggplot(aes(x = city, y = revenue)) +
+  
+  # Geometries
+  geom_col(fill = "#2DC6D6") +
+  geom_label(aes(label = revenue_text), size=2) +
+  
+  # Formatting
+  scale_y_continuous(labels = scales::dollar_format(big.mark = ".", 
+                                                    decimal.mark = ",", 
+                                                    prefix = "", 
+                                                    suffix = " €")) +
+  
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  
+  labs(
+    title    = "Revenue by city over 5 years",
+    x = "City",
+    y = "Revenue"
+  )
+```
+
+### Analysis of bike sales by state and year
+Steps 1 to 3 remain the same as in 1. 
+
+4. Manipulating
+getting the sales by state and year:
+```{r, eval=TRUE}
+sales_by_state_and_year <- joined_data %>% 
+  #select needed columns
+  select(state, year, total_price) %>% 
+  #grouping by state and year
+  group_by(state, year) %>% 
+  #adding all revenues for a given state and year
+  summarize(revenue = sum(total_price)) %>% 
+  #formatting the revenue
+  mutate(revenue_text = scales::dollar(revenue, big.mark = ".", decimal.mark = ",", prefix = "", suffix = " €"))
+```
+
+5. Plotting
+```{r plot, fig.width=12, fig.height=7}
+sales_by_state_and_year %>%
+  
+  # Set up x, y, fill
+  ggplot(aes(x = year, y = revenue, fill = state)) +
+  
+  # Geometries
+  geom_col() +
+  
+  # Facet
+  facet_wrap(~ state) +
+  
+  # Formatting
+  scale_y_continuous(labels = scales::dollar_format(big.mark = ".", 
+                                                    decimal.mark = ",", 
+                                                    prefix = "", 
+                                                    suffix = " €")) +
+  
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  
+  labs(
+    title = "Revenue by state and year",
+    subtitle = "displayed revenue for all  bikeshops in a given state",
+    fill = "States"
+  )
+```
+
+
+
+# Data Acquisition
+
+
+
+# Examples
 Notice that whatever you define as a top level header, automatically gets put into the table of contents bar on the left. 
 
 Adding this code to my first post:
