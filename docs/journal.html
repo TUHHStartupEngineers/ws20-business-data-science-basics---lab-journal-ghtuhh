@@ -411,7 +411,7 @@ div.tocify {
 
 
 <p><strong>IMPORTANT:</strong> You can delete everything in here and start fresh. You might want to start by not deleting anything above this line until you know what that stuff is doing.</p>
-<p>Last compiled: 2020-12-02</p>
+<p>Last compiled: 2020-12-05</p>
 <p>This is an <code>.Rmd</code> file. It is plain text with special features. Any time you write just like this, it will be compiled to normal text in the website. If you put a # in front of your text, it will create a top level-header.</p>
 <div id="introduction-to-the-tidyverse" class="section level1">
 <h1><span class="header-section-number">1</span> Introduction to the tidyverse</h1>
@@ -568,40 +568,440 @@ joined_data &lt;- left_join(orders_shops_joined, bikes, by=c(&quot;product_id&qu
 </div>
 <div id="data-acquisition" class="section level1">
 <h1><span class="header-section-number">2</span> Data Acquisition</h1>
+<div id="challenges-1" class="section level2">
+<h2><span class="header-section-number">2.1</span> Challenges</h2>
+<div id="getting-data-via-an-api-marketstack" class="section level3">
+<h3><span class="header-section-number">2.1.1</span> Getting data via an API: marketstack</h3>
+<p>Problem: Acquiring data from an API for a data scientific purpose.</p>
+<p>In the following code financial data will be requested from marketstack.com, which provide an API. For the sake of this example, the adjusted daily closing price of Amazon stock will be requested for the time period of one year. A free access to marketstack’s API is granted after signing up and getting an API key, which will be used to authenticate all requests.</p>
+<ol style="list-style-type: decimal">
+<li>Load needed libraries</li>
+</ol>
+<pre class="r"><code>library(readr)
+library(httr)
+library(glue)
+library(jsonlite)
+library(tidyverse)
+library(ggplot2)
+library(lubridate)</code></pre>
+<ol start="2" style="list-style-type: decimal">
+<li>Build the request url / query string</li>
+</ol>
+<pre class="r"><code>API_KEY &lt;- read_tsv(&quot;00_data/apikey.txt&quot;)
+symbol = &quot;AMZN&quot;    # ticker for the Amazon stock
+limit = &quot;300&quot;      # number of days, approx. 300 trading days a year
+url = glue(&#39;http://api.marketstack.com/v1/eod?access_key={API_KEY}&amp;symbols={symbol}&amp;limit=300&#39;)</code></pre>
+<ol start="3" style="list-style-type: decimal">
+<li>Getting the data</li>
+</ol>
+<pre class="r"><code>amzn &lt;- GET(url) %&gt;% .$content %&gt;% rawToChar() %&gt;% fromJSON() %&gt;% .$data %&gt;% as_tibble() %&gt;% select(adj_close, date)
+head(amzn)</code></pre>
+<ol start="4" style="list-style-type: decimal">
+<li>Visualization Plotting the adjusted close over the last year.</li>
+</ol>
+<pre class="r"><code>amzn$date &lt;- as.Date(amzn$date, format=&quot;%Y-%m-%dT00:00:00+0000&quot;)
+ggplot(data=amzn, aes(x=date, y= adj_close)) + 
+  geom_line(color=&quot;#2DC6D6&quot;) + 
+  labs(x = &quot;Date&quot;, 
+       y = &quot;Adjusted closing Price&quot;,
+       title = &quot;Amazon stock price&quot;)</code></pre>
 </div>
-<div id="examples" class="section level1">
-<h1><span class="header-section-number">3</span> Examples</h1>
-<p>Notice that whatever you define as a top level header, automatically gets put into the table of contents bar on the left.</p>
-<p>Adding this code to my first post:</p>
-<pre class="r"><code>numbers &lt;- 1:1000
+<div id="webscraping" class="section level3">
+<h3><span class="header-section-number">2.1.2</span> Webscraping</h3>
+<p>Problem: Acquiring data from rosebikes.de via web scraping to build a Database about their products.</p>
+<ol style="list-style-type: decimal">
+<li>Load needed libraries</li>
+</ol>
+<pre class="r"><code>library(tidyverse)
+library(rvest)</code></pre>
+<ol start="2" style="list-style-type: decimal">
+<li>Collect product families</li>
+</ol>
+<pre class="r"><code>url &lt;- &quot;https://www.rosebikes.de/&quot;
 
-# This will print the first 10 elements of the vector numbers
-numbers[1:10]
+# getting raw html from homepage
+html_home &lt;- read_html(url)
 
-# This will plot a histogram of 100 random elements of the vector numbers
-hist(sample(numbers, 100, replace = T))</code></pre>
-<div id="second-level-header" class="section level2">
-<h2><span class="header-section-number">3.1</span> Second level header</h2>
-<p>You can add more headers by adding more hashtags. These won’t be put into the table of contents</p>
-<div id="third-level-header" class="section level3">
-<h3><span class="header-section-number">3.1.1</span> third level header</h3>
-<p>Here’s an even lower level header</p>
+# scraping the ids for each bike family
+
+bike_family &lt;- html_home %&gt;%
+  # get nodes for families
+  html_nodes(css=&quot;.main-navigation-category-with-tiles__title&quot;) %&gt;% 
+  # getting text in between span tags
+  html_text() %&gt;% 
+  # in a tibble
+  as_tibble()
+
+# removing rows (bikes,sales)
+bike_family &lt;- bike_family[c(-1,-12),]
+
+#scraping the subdirectories in the same way
+bike_family_url &lt;- html_home %&gt;% 
+  html_nodes(css=&quot;.main-navigation-category-with-tiles__link &quot;) %&gt;% 
+  html_attr(&#39;href&#39;) %&gt;% 
+  as_tibble() %&gt;%
+  # adding in a second row urls of bike families
+  mutate(url=glue(&quot;https://www.rosebikes.de{value}&quot;))
+
+bike_family_url &lt;- bike_family_url[-11,]
+
+#joining the tibbles
+bike_family$url &lt;- bike_family_url$url
+
+print(bike_family)</code></pre>
+<pre><code>## # A tibble: 10 x 2
+##    value            url                                          
+##    &lt;chr&gt;            &lt;glue&gt;                                       
+##  1 &quot;\nMTB\n&quot;        https://www.rosebikes.de/fahrräder/mtb       
+##  2 &quot;\nRennrad\n&quot;    https://www.rosebikes.de/fahrräder/rennrad   
+##  3 &quot;\nGravel\n&quot;     https://www.rosebikes.de/fahrräder/gravel    
+##  4 &quot;\nCyclocross\n&quot; https://www.rosebikes.de/fahrräder/cyclocross
+##  5 &quot;\nFitness\n&quot;    https://www.rosebikes.de/fahrräder/fitness   
+##  6 &quot;\nE-Bike\n&quot;     https://www.rosebikes.de/fahrräder/e-bike    
+##  7 &quot;\nTrekking\n&quot;   https://www.rosebikes.de/fahrräder/trekking  
+##  8 &quot;\nReise\n&quot;      https://www.rosebikes.de/fahrräder/reise     
+##  9 &quot;\nUrban\n&quot;      https://www.rosebikes.de/fahrräder/urban     
+## 10 &quot;\nKinder\n&quot;     https://www.rosebikes.de/fahrräder/kinder</code></pre>
+<ol start="3" style="list-style-type: decimal">
+<li>Collect bike data Now that the bike families and respecting links are gathered in a tibble, it is possible to scrape the data of each product in a bike family. Retrieving all product categories.</li>
+</ol>
+<pre class="r"><code>url_road_bikes &lt;- bike_family$url[2] %&gt;% as.character()
+
+road_bikes_html &lt;- read_html(url_road_bikes)
+
+bike_categories_url &lt;- road_bikes_html %&gt;%
+  html_nodes(css=&quot;.catalog-category-bikes__button&quot;) %&gt;%
+  html_attr(&quot;href&quot;) %&gt;%
+  enframe(name=&quot;position&quot;, value=&quot;sub_url&quot;) %&gt;%
+  mutate(url=glue(&quot;https://www.rosebikes.de{sub_url}&quot;)) %&gt;%
+  select(-sub_url)
+  
+bike_categories &lt;- road_bikes_html %&gt;%
+  html_nodes(css=&quot;.catalog-category-bikes__title-text&quot;) %&gt;%
+  html_text() %&gt;% 
+  enframe(name=&quot;position&quot;, value=&quot;category&quot;) %&gt;%
+  left_join(bike_categories_url)</code></pre>
+<p>Defining a function that will retrieve the data for each bike category</p>
+<pre class="r"><code>get_bike_data &lt;- function(url) {
+  
+  html_body &lt;- read_html(url)
+  
+  model_names &lt;- html_body %&gt;%
+    html_nodes(css=&quot;.catalog-category-model__title&quot;) %&gt;%
+    html_text() %&gt;%
+    enframe(name=&quot;position&quot;, value=&quot;model_name&quot;)
+  
+  model_infos &lt;- html_body %&gt;% 
+    html_nodes(css=&quot;.catalog-category-model-info__list&quot;) %&gt;%
+    html_text() %&gt;%
+    enframe(name=&quot;position&quot;, value=&quot;infos&quot;)
+
+  model_prices &lt;- html_body %&gt;% 
+    html_nodes(css=&quot;.product-tile-price__current-value.catalog-category-model__price-current-value&quot;) %&gt;%
+    html_text() %&gt;%
+    enframe(name=&quot;position&quot;, value=&quot;price&quot;)
+
+  model_tbl &lt;- left_join(model_names, model_infos) %&gt;% left_join(model_prices)
+  return(model_tbl)
+}
+
+# The data from all bikes is gathered using a for loop and executing the function for all scraped bike category urls.
+bike_data = get_bike_data(bike_categories$url[1])
+
+for (i in 2:length(bike_categories$url)) {
+  bike_data &lt;- rbind(bike_data, get_bike_data(bike_categories$url[i]))
+}
+
+head(bike_data)</code></pre>
+<pre><code>## # A tibble: 6 x 4
+##   position model_name           infos                                  price    
+##      &lt;int&gt; &lt;chr&gt;                &lt;chr&gt;                                  &lt;chr&gt;    
+## 1        1 &quot;\nPRO SL DISC 105\… &quot;\nGewicht: 9,0 kg\n\n\nLaufrad: DT S… &quot;\n1.599…
+## 2        2 &quot;\nPRO SL DISC Ulte… &quot;\nGewicht: 8,9 kg\n\n\nLaufrad: DT S… &quot;\n1.899…
+## 3        1 &quot;\nPRO SL 105\n&quot;     &quot;\nGewicht: 8,5 kg\n\n\nLaufrad: DT S… &quot;\n1.199…
+## 4        2 &quot;\nPRO SL Ultegra\n&quot; &quot;\nGewicht: 8,3 kg\n\n\nLaufrad: DT S… &quot;\n1.499…
+## 5        1 &quot;\nREVEAL FOUR DISC… &quot;\nGewicht: 8,1 kg\n\n\nLaufrad: ROSE… &quot;\n2.499…
+## 6        2 &quot;\nREVEAL FOUR DISC… &quot;\nGewicht: 8,0 kg\n\n\nLaufrad: ROSE… &quot;\n2.799…</code></pre>
+<p>In the tibble bike_data, the data for all bikes in the family ‘Rennrad’ are displayed with additional information like price, weight and equipment.</p>
 </div>
 </div>
 </div>
-<div id="my-second-post-note-the-order" class="section level1">
-<h1><span class="header-section-number">4</span> My second post (note the order)</h1>
-<p>Last compiled: 2020-12-02</p>
-<p>I’m writing this tutorial going from the top down. And, this is how it will be printed. So, notice the second post is second in the list. If you want your most recent post to be at the top, then make a new post starting at the top. If you want the oldest first, do, then keep adding to the bottom</p>
+<div id="data-wrangling" class="section level1">
+<h1><span class="header-section-number">3</span> Data Wrangling</h1>
+<div id="challenges-2" class="section level2">
+<h2><span class="header-section-number">3.1</span> Challenges</h2>
+<div id="challenge-1-patent-dominance" class="section level3">
+<h3><span class="header-section-number">3.1.1</span> Challenge 1 :Patent dominance</h3>
+<p>Problem: Which of US companies/corporations have the most number of listed patents? Top 10.</p>
+<ol style="list-style-type: decimal">
+<li>Loading needed libraries (for all 3 challenges)</li>
+</ol>
+<pre class="r"><code>library(tidyverse)
+library(vroom)
+library(data.table)</code></pre>
+<ol start="2" style="list-style-type: decimal">
+<li>Load the patent data from patentsview.org load the following tables:</li>
+</ol>
+<ul>
+<li>assignee table</li>
+<li>patent_assignee table</li>
+</ul>
+<pre class="r"><code># load assignee table as data.table
+
+col_assignee &lt;- list(
+  id = col_character(),
+  type = col_character(),
+  name_first = col_character(),
+  name_last = col_character(),
+  organization = col_character()
+)
+
+assignee_tbl &lt;- vroom(
+            file       = &quot;00_data/assignee.tsv&quot;, 
+            delim      = &quot;\t&quot;, 
+            col_types  = col_assignee,
+            na         = c(&quot;&quot;, &quot;NA&quot;, &quot;NULL&quot;)
+        )
+
+setDT(assignee_tbl)
+
+# load patent_assignee table as data.table
+
+col_pa &lt;- list(
+  patent_id = col_character(),
+  assignee_id = col_character(),
+  loaction_id = col_character()
+)
+
+
+pa_tbl &lt;- vroom(
+            file       = &quot;00_data/patent_assignee.tsv&quot;, 
+            delim      = &quot;\t&quot;, 
+            col_types  = col_pa,
+            na         = c(&quot;&quot;, &quot;NA&quot;, &quot;NULL&quot;)
+        )
+
+setDT(pa_tbl)</code></pre>
+<ol start="3" style="list-style-type: decimal">
+<li>Merging data</li>
+</ol>
+<pre class="r"><code>combined_data &lt;- merge(x = assignee_tbl, y = pa_tbl, 
+                       by.x    = &quot;id&quot;, 
+                       by.y    = &quot;assignee_id&quot;)
+
+combined_data %&gt;% glimpse()</code></pre>
+<pre><code>## Rows: 6,789,243
+## Columns: 7
+## $ id           &lt;chr&gt; &quot;org_000ey6U69efJ6KrjwQW8&quot;, &quot;org_000ey6U69efJ6KrjwQW8&quot;, …
+## $ type         &lt;chr&gt; &quot;3&quot;, &quot;3&quot;, &quot;3&quot;, &quot;3&quot;, &quot;3&quot;, &quot;3&quot;, &quot;3&quot;, &quot;3&quot;, &quot;3&quot;, &quot;3&quot;, &quot;3&quot;, &quot;…
+## $ name_first   &lt;chr&gt; NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, …
+## $ name_last    &lt;chr&gt; NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, …
+## $ organization &lt;chr&gt; &quot;Lhoist Recherche et Developpement S.A.&quot;, &quot;Lhoist Recher…
+## $ patent_id    &lt;chr&gt; &quot;5173279&quot;, &quot;5277837&quot;, &quot;5290353&quot;, &quot;5591247&quot;, &quot;10008685&quot;, …
+## $ location_id  &lt;chr&gt; &quot;6324fbf2-ac0f-4403-a100-bd54683189c3&quot;, &quot;6324fbf2-ac0f-4…</code></pre>
+<ol start="4" style="list-style-type: decimal">
+<li>Wrangling The following code selects all US companies (where type = 2) and sorts in ascending order the number of patents.</li>
+</ol>
+<pre class="r"><code>us_patent_companies &lt;-  combined_data[type==2,.N, by=organization][order(N, decreasing=TRUE)]
+head(us_patent_companies,10) #prints out top 10 companies and number of patents</code></pre>
+<pre><code>##                                    organization      N
+##  1: International Business Machines Corporation 139091
+##  2:                    General Electric Company  47121
+##  3:                           Intel Corporation  42156
+##  4:   Hewlett-Packard Development Company, L.P.  35572
+##  5:                       Microsoft Corporation  30085
+##  6:                     Micron Technology, Inc.  28000
+##  7:                       QUALCOMM Incorporated  24702
+##  8:              Texas Instruments Incorporated  24181
+##  9:                           Xerox Corporation  23173
+## 10:                                  Apple Inc.  21820</code></pre>
 </div>
-<div id="adding-r-stuff" class="section level1">
-<h1><span class="header-section-number">5</span> Adding R stuff</h1>
-<p>So far this is just a blog where you can write in plain text and serve your writing to a webpage. One of the main purposes of this lab journal is to record your progress learning R. The reason I am asking you to use this process is because you can both make a website, and a lab journal, and learn R all in R-studio. This makes everything really convenient and in the same place.</p>
-<p>So, let’s say you are learning how to make a histogram in R. For example, maybe you want to sample 100 numbers from a normal distribution with mean = 0, and standard deviation = 1, and then you want to plot a histogram. You can do this right here by using an r code block, like this:</p>
-<pre class="r"><code>samples &lt;- rnorm(100, mean=0, sd=1)
-hist(samples)</code></pre>
-<p><img src="journal_files/figure-html/unnamed-chunk-10-1.png" width="672" /></p>
-<p>When you knit this R Markdown document, you will see that the histogram is printed to the page, along with the R code. This document can be set up to hide the R code in the webpage, just delete the comment (hashtag) from the cold folding option in the yaml header up top. For purposes of letting yourself see the code, and me see the code, best to keep it the way that it is. You’ll learn that all of these things and more can be customized in each R code block.</p>
+<div id="challenge-2-recent-patent-activity" class="section level3">
+<h3><span class="header-section-number">3.1.2</span> Challenge 2: Recent patent activity</h3>
+<p>Problem: Which US companies listed the most patents in 2019? Top 10.</p>
+<ol style="list-style-type: decimal">
+<li>Load needed libraries same as in Challenge 1 and lubridate</li>
+</ol>
+<pre class="r"><code>library(lubridate)</code></pre>
+<ol start="2" style="list-style-type: decimal">
+<li>Load the patent data from patentsview.org load the following tables:</li>
+</ol>
+<ul>
+<li>assignee table (done in Challenge 1)</li>
+<li>patent_assignee table (done in Challenge 1)</li>
+<li>patent table</li>
+</ul>
+<pre class="r"><code># load patent table as data.table
+# skip all the columns but id and date since the criteria is 2019
+
+col_patent &lt;- list(
+  id = col_character(),
+  type = col_skip(),
+  number = col_skip(),
+  country = col_skip(),
+  date = col_date(&quot;%Y-%m-%d&quot;),
+  abstract = col_skip(),
+  title = col_skip(),
+  kind = col_skip(),
+  num_claims = col_skip(),
+  filename = col_skip(),
+  withdrawn = col_skip()
+)
+
+patent_tbl &lt;- vroom(
+            file       = &quot;00_data/patent.tsv&quot;, 
+            delim      = &quot;\t&quot;, 
+            col_types  = col_patent,
+            na         = c(&quot;&quot;, &quot;NA&quot;, &quot;NULL&quot;)
+        )
+
+setDT(patent_tbl)</code></pre>
+<ol start="3" style="list-style-type: decimal">
+<li>Merging data</li>
+</ol>
+<pre class="r"><code>combined_data2 &lt;- merge(x = combined_data, y = patent_tbl, 
+                       by.x    = &quot;patent_id&quot;, 
+                       by.y    = &quot;id&quot;)
+
+combined_data2 %&gt;% glimpse()</code></pre>
+<pre><code>## Rows: 6,789,243
+## Columns: 8
+## $ patent_id    &lt;chr&gt; &quot;10000000&quot;, &quot;10000001&quot;, &quot;10000002&quot;, &quot;10000003&quot;, &quot;1000000…
+## $ id           &lt;chr&gt; &quot;org_nVO9qbgVusOCsqolUzwW&quot;, &quot;org_XsQO6RGuhBmfEX0Bd1cR&quot;, …
+## $ type         &lt;chr&gt; &quot;2&quot;, &quot;3&quot;, &quot;3&quot;, &quot;3&quot;, &quot;3&quot;, &quot;3&quot;, &quot;3&quot;, &quot;2&quot;, &quot;2&quot;, &quot;2&quot;, &quot;2&quot;, &quot;…
+## $ name_first   &lt;chr&gt; NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, …
+## $ name_last    &lt;chr&gt; NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, …
+## $ organization &lt;chr&gt; &quot;Raytheon Company&quot;, &quot;LS MTRON LTD.&quot;, &quot;KOLON INDUSTRIES, …
+## $ location_id  &lt;chr&gt; &quot;277153ee-6c5b-425a-84f5-6148e4b0cb08&quot;, &quot;7f4f050d-83b7-4…
+## $ date         &lt;date&gt; 2018-06-19, 2018-06-19, 2018-06-19, 2018-06-19, 2018-06…</code></pre>
+<ol start="4" style="list-style-type: decimal">
+<li>Wrangling</li>
+</ol>
+<pre class="r"><code>#create new &quot;year&quot; column
+combined_data2[, year := year(date) ]
+
+#select all data where year = 2019 and other condition from challenge 1
+us19_patents &lt;- combined_data2[type==2 &amp; year==2019,.N,by=organization][order(N, decreasing=TRUE)]
+
+# print top 10 companies with most patents in 2019
+head(us19_patents,10)</code></pre>
+<pre><code>##                                    organization    N
+##  1: International Business Machines Corporation 9265
+##  2:                           Intel Corporation 3526
+##  3:         Microsoft Technology Licensing, LLC 3106
+##  4:                                  Apple Inc. 2817
+##  5:               Ford Global Technologies, LLC 2624
+##  6:                   Amazon Technologies, Inc. 2533
+##  7:                       QUALCOMM Incorporated 2359
+##  8:                                 Google Inc. 2290
+##  9:                    General Electric Company 1860
+## 10:   Hewlett-Packard Development Company, L.P. 1589</code></pre>
+</div>
+<div id="challenge-3-innovation-in-tech" class="section level3">
+<h3><span class="header-section-number">3.1.3</span> Challenge 3: Innovation in Tech</h3>
+<p>Problem: What is the most innovative (most patents) Tech sector worldwide? for the top 10 companies &amp; What are the top 5 uscp main classes ?</p>
+<ol style="list-style-type: decimal">
+<li><p>Load needed libraries same as in Challenge 1 &amp; 2</p></li>
+<li><p>Load the patent data from patentsview.org load the following tables:</p></li>
+</ol>
+<ul>
+<li>assignee table (done in Challenge 1)</li>
+<li>patent_assignee table (done in Challenge 1)</li>
+<li>uspc table</li>
+<li>mainclass_current</li>
+</ul>
+<pre class="r"><code># load uspc table as data.table
+# skip all the columns but id and date since the criteria is 2019
+
+col_uspc &lt;- list(
+  uuid = col_character(),
+  patent_id = col_character(),
+  mainclass_id = col_character(),
+  subclass_id = col_character(),
+  sequence = col_integer()
+)
+
+uspc_tbl &lt;- vroom(
+            file       = &quot;00_data/uspc.tsv&quot;, 
+            delim      = &quot;\t&quot;, 
+            col_types  = col_uspc,
+            na         = c(&quot;&quot;, &quot;NA&quot;, &quot;NULL&quot;)
+        )
+
+setDT(uspc_tbl)
+
+
+#load mainclass_current table
+
+col_mainclass &lt;- list(
+  id = col_character(),
+  title = col_character())
+
+mainclass_tbl &lt;- vroom(
+            file       = &quot;00_data/mainclass_current.tsv&quot;, 
+            delim      = &quot;\t&quot;, 
+            col_types  = col_mainclass,
+            na         = c(&quot;&quot;, &quot;NA&quot;, &quot;NULL&quot;)
+        )
+
+setDT(mainclass_tbl)</code></pre>
+<ol start="3" style="list-style-type: decimal">
+<li>Merging data</li>
+</ol>
+<pre class="r"><code>combined_data3 &lt;- merge(x = combined_data, y = uspc_tbl, 
+                       by    = &quot;patent_id&quot;)
+
+combined_data3 &lt;- merge(x = combined_data3, y = mainclass_tbl, 
+                       by.x    = &quot;mainclass_id&quot;,
+                       by.y    = &quot;id&quot;)
+
+combined_data3 %&gt;% glimpse()</code></pre>
+<pre><code>## Rows: 16,382,795
+## Columns: 12
+## $ mainclass_id &lt;chr&gt; &quot;-0T&quot;, &quot;01L&quot;, &quot;01L&quot;, &quot;01L&quot;, &quot;01L&quot;, &quot;01L&quot;, &quot;01L&quot;, &quot;01L&quot;, …
+## $ patent_id    &lt;chr&gt; &quot;PP7315&quot;, &quot;3935040&quot;, &quot;3944447&quot;, &quot;3966512&quot;, &quot;3968460&quot;, &quot;4…
+## $ id           &lt;chr&gt; &quot;org_xiGdOQJrkYfHcTC5rHbX&quot;, &quot;org_pLL87qnubNLz2M3dMLci&quot;, …
+## $ type         &lt;chr&gt; &quot;2&quot;, &quot;2&quot;, &quot;2&quot;, &quot;3&quot;, &quot;2&quot;, &quot;2&quot;, &quot;3&quot;, &quot;2&quot;, &quot;6&quot;, &quot;3&quot;, &quot;2&quot;, &quot;…
+## $ name_first   &lt;chr&gt; NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, …
+## $ name_last    &lt;chr&gt; NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, …
+## $ organization &lt;chr&gt; &quot;Yoder Brothers, Inc.&quot;, &quot;Harris Corporation&quot;, &quot;IBM Corpo…
+## $ location_id  &lt;chr&gt; &quot;586e647e-678a-4acb-992f-27279e1c86e9&quot;, &quot;0107d8bd-dffb-4…
+## $ uuid         &lt;chr&gt; &quot;9u64q2vk7becnxo3n7qf3b6kv&quot;, &quot;kna0vnw7es9yixzy7wqvz4v1p&quot;…
+## $ subclass_id  &lt;chr&gt; &quot;-0T/74&quot;, &quot;01L/311.2&quot;, &quot;01L/271.2&quot;, &quot;01L/271.4&quot;, &quot;01L/41…
+## $ sequence     &lt;int&gt; 0, 9, 15, 11, 3, 6, 2, 6, 5, 6, 8, 4, 5, 2, 12, 11, 10, …
+## $ title        &lt;chr&gt; &quot;DOES NOT EXIST&quot;, &quot;DOES NOT EXIST&quot;, &quot;DOES NOT EXIST&quot;, &quot;D…</code></pre>
+<ol start="4" style="list-style-type: decimal">
+<li>Wrangling</li>
+</ol>
+<pre class="r"><code># order all main classes after the number of patents (all time)
+tech_sectors &lt;- combined_data3[,.N,by=title][order(N,decreasing=TRUE)]
+tech_sectors %&gt;% head(10)</code></pre>
+<pre><code>##                                                                   title      N
+##  1:               ORGANIC COMPOUNDS -- PART OF THE CLASS 532-570 SERIES 724246
+##  2: SYNTHETIC RESINS OR NATURAL RUBBERS -- PART OF THE CLASS 520 SERIES 628395
+##  3:                  DRUG, BIO-AFFECTING AND BODY TREATING COMPOSITIONS 602110
+##  4:  ACTIVE SOLID-STATE DEVICES (E.G., TRANSISTORS, SOLID-STATE DIODES) 444181
+##  5:                                                      DOES NOT EXIST 431044
+##  6:                            STOCK MATERIAL OR MISCELLANEOUS ARTICLES 412856
+##  7:                       CHEMISTRY: MOLECULAR BIOLOGY AND MICROBIOLOGY 374457
+##  8:                         SEMICONDUCTOR DEVICE MANUFACTURING: PROCESS 286881
+##  9:                                                             SURGERY 286688
+## 10:                                                  TELECOMMUNICATIONS 263938</code></pre>
+<pre class="r"><code>#selecting top 10 worldwide organizations with most patents
+world_companies &lt;- combined_data3[!is.na(organization),.N,by=organization][order(N, decreasing=TRUE)][1:10,organization]
+
+#selecting all patent data from the companies selected above by mainclass_id and order after number of patents
+main_classes &lt;- combined_data3[organization %in% world_companies][!(title==&quot;DOES NOT EXIST&quot;),.N,by=title][order(N, decreasing=TRUE)]
+main_classes %&gt;% head(5) #shows the top 5 technology sectors with highest number of patents</code></pre>
+<pre><code>##                                                                 title     N
+## 1: ACTIVE SOLID-STATE DEVICES (E.G., TRANSISTORS, SOLID-STATE DIODES) 93854
+## 2:                        SEMICONDUCTOR DEVICE MANUFACTURING: PROCESS 53872
+## 3:                           STATIC INFORMATION STORAGE AND RETRIEVAL 41338
+## 4:                                                 TELECOMMUNICATIONS 36627
+## 5:                                           MULTIPLEX COMMUNICATIONS 36588</code></pre>
+<p>Summary: - Most patents belong to the category: Organic Compounds - Most patents from the top 10 most innovative companies belong to the category: Active Solid-State Devices</p>
+</div>
+</div>
 </div>
 
 

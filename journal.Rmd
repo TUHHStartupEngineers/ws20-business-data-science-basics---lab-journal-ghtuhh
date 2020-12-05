@@ -13,7 +13,7 @@ output:
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(message=FALSE,warning=FALSE, cache=TRUE)
+knitr::opts_chunk$set(message=FALSE,warning=FALSE, cache=TRUE, cache.lazy = FALSE)
 ```
 
 **IMPORTANT:** You can delete everything in here and start fresh. You might want to start by not deleting anything above this line until you know what that stuff is doing.
@@ -191,45 +191,378 @@ sales_by_state_and_year %>%
 
 # Data Acquisition
 
+## Challenges
 
+### Getting data via an API: marketstack
+Problem: Acquiring data from an API for a data scientific purpose.
 
-# Examples
-Notice that whatever you define as a top level header, automatically gets put into the table of contents bar on the left. 
+In the following code financial data will be requested from marketstack.com, which provide an API. For the sake of this example, the adjusted daily closing price of Amazon stock will be requested for the time period of one year. A free access to marketstack's API is granted after signing up and getting an API key, which will be used to authenticate all requests.
 
-Adding this code to my first post:
+1. Load needed libraries
+```{r, eval=FALSE}
+library(readr)
+library(httr)
+library(glue)
+library(jsonlite)
+library(tidyverse)
+library(ggplot2)
+library(lubridate)
+```
+
+2. Build the request url / query string
+```{r, eval=FALSE}
+API_KEY <- read_tsv("00_data/apikey.txt")
+symbol = "AMZN"    # ticker for the Amazon stock
+limit = "300"      # number of days, approx. 300 trading days a year
+url = glue('http://api.marketstack.com/v1/eod?access_key={API_KEY}&symbols={symbol}&limit=300')
+```
+
+3. Getting the data
+```{r, eval=FALSE}
+amzn <- GET(url) %>% .$content %>% rawToChar() %>% fromJSON() %>% .$data %>% as_tibble() %>% select(adj_close, date)
+head(amzn)
+```
+
+4. Visualization
+Plotting the adjusted close over the last year.
 ```{r, eval = FALSE}
-numbers <- 1:1000
-
-# This will print the first 10 elements of the vector numbers
-numbers[1:10]
-
-# This will plot a histogram of 100 random elements of the vector numbers
-hist(sample(numbers, 100, replace = T))
+amzn$date <- as.Date(amzn$date, format="%Y-%m-%dT00:00:00+0000")
+ggplot(data=amzn, aes(x=date, y= adj_close)) + 
+  geom_line(color="#2DC6D6") + 
+  labs(x = "Date", 
+       y = "Adjusted closing Price",
+       title = "Amazon stock price")
 ```
 
-## Second level header
 
-You can add more headers by adding more hashtags. These won't be put into the table of contents
 
-### third level header
+### Webscraping
+Problem: Acquiring data from rosebikes.de via web scraping to build a Database about their products.
 
-Here's an even lower level header
+1. Load needed libraries
+```{r, eval=TRUE}
+library(tidyverse)
+library(rvest)
 
-# My second post (note the order)
-
-Last compiled: `r Sys.Date()`
-
-I'm writing this tutorial going from the top down. And, this is how it will be printed. So, notice the second post is second in the list. If you want your most recent post to be at the top, then make a new post starting at the top. If you want the oldest first, do, then keep adding to the bottom
-
-# Adding R stuff
-
-So far this is just a blog where you can write in plain text and serve your writing to a webpage. One of the main purposes of this lab journal is to record your progress learning R. The reason I am asking you to use this process is because you can both make a website, and a lab journal, and learn R all in R-studio. This makes everything really convenient and in the same place. 
-
-So, let's say you are learning how to make a histogram in R. For example, maybe you want to sample 100 numbers from a normal distribution with mean = 0, and standard deviation = 1, and then you want to plot a histogram. You can do this right here by using an r code block, like this:
-
-```{r}
-samples <- rnorm(100, mean=0, sd=1)
-hist(samples)
 ```
 
-When you knit this R Markdown document, you will see that the histogram is printed to the page, along with the R code. This document can be set up to hide the R code in the webpage, just delete the comment (hashtag) from the cold folding option in the yaml header up top. For purposes of letting yourself see the code, and me see the code, best to keep it the way that it is. You'll learn that all of these things and more can be customized in each R code block.
+2. Collect product families
+```{r, eval=TRUE}
+url <- "https://www.rosebikes.de/"
+
+# getting raw html from homepage
+html_home <- read_html(url)
+
+# scraping the ids for each bike family
+
+bike_family <- html_home %>%
+  # get nodes for families
+  html_nodes(css=".main-navigation-category-with-tiles__title") %>% 
+  # getting text in between span tags
+  html_text() %>% 
+  # in a tibble
+  as_tibble()
+
+# removing rows (bikes,sales)
+bike_family <- bike_family[c(-1,-12),]
+
+#scraping the subdirectories in the same way
+bike_family_url <- html_home %>% 
+  html_nodes(css=".main-navigation-category-with-tiles__link ") %>% 
+  html_attr('href') %>% 
+  as_tibble() %>%
+  # adding in a second row urls of bike families
+  mutate(url=glue("https://www.rosebikes.de{value}"))
+
+bike_family_url <- bike_family_url[-11,]
+
+#joining the tibbles
+bike_family$url <- bike_family_url$url
+
+print(bike_family)
+```
+
+3. Collect bike data
+Now that the bike families and respecting links are gathered in a tibble, it is possible to scrape the data of each product in a bike family. Retrieving all product categories.
+```{r, eval=TRUE}
+url_road_bikes <- bike_family$url[2] %>% as.character()
+
+road_bikes_html <- read_html(url_road_bikes)
+
+bike_categories_url <- road_bikes_html %>%
+  html_nodes(css=".catalog-category-bikes__button") %>%
+  html_attr("href") %>%
+  enframe(name="position", value="sub_url") %>%
+  mutate(url=glue("https://www.rosebikes.de{sub_url}")) %>%
+  select(-sub_url)
+  
+bike_categories <- road_bikes_html %>%
+  html_nodes(css=".catalog-category-bikes__title-text") %>%
+  html_text() %>% 
+  enframe(name="position", value="category") %>%
+  left_join(bike_categories_url)
+
+```
+
+
+Defining a function that will retrieve the data for each bike category
+```{r, eval=TRUE}
+
+get_bike_data <- function(url) {
+  
+  html_body <- read_html(url)
+  
+  model_names <- html_body %>%
+    html_nodes(css=".catalog-category-model__title") %>%
+    html_text() %>%
+    enframe(name="position", value="model_name")
+  
+  model_infos <- html_body %>% 
+    html_nodes(css=".catalog-category-model-info__list") %>%
+    html_text() %>%
+    enframe(name="position", value="infos")
+
+  model_prices <- html_body %>% 
+    html_nodes(css=".product-tile-price__current-value.catalog-category-model__price-current-value") %>%
+    html_text() %>%
+    enframe(name="position", value="price")
+
+  model_tbl <- left_join(model_names, model_infos) %>% left_join(model_prices)
+  return(model_tbl)
+}
+
+# The data from all bikes is gathered using a for loop and executing the function for all scraped bike category urls.
+bike_data = get_bike_data(bike_categories$url[1])
+
+for (i in 2:length(bike_categories$url)) {
+  bike_data <- rbind(bike_data, get_bike_data(bike_categories$url[i]))
+}
+
+head(bike_data)
+```
+In the tibble bike_data, the data for all bikes in the family 'Rennrad' are displayed with additional information like price, weight and equipment.
+
+# Data Wrangling
+
+## Challenges
+
+### Challenge 1 :Patent dominance
+
+Problem: Which of US companies/corporations have the most number of listed patents? Top 10.
+
+1. Loading needed libraries (for all 3 challenges)
+```{r, eval=TRUE}
+library(tidyverse)
+library(vroom)
+library(data.table)
+```
+
+2. Load the patent data from patentsview.org
+load the following tables:
+- assignee table
+- patent_assignee table
+
+```{r, eval=TRUE}
+# load assignee table as data.table
+
+col_assignee <- list(
+  id = col_character(),
+  type = col_character(),
+  name_first = col_character(),
+  name_last = col_character(),
+  organization = col_character()
+)
+
+assignee_tbl <- vroom(
+            file       = "00_data/assignee.tsv", 
+            delim      = "\t", 
+            col_types  = col_assignee,
+            na         = c("", "NA", "NULL")
+        )
+
+setDT(assignee_tbl)
+
+# load patent_assignee table as data.table
+
+col_pa <- list(
+  patent_id = col_character(),
+  assignee_id = col_character(),
+  loaction_id = col_character()
+)
+
+
+pa_tbl <- vroom(
+            file       = "00_data/patent_assignee.tsv", 
+            delim      = "\t", 
+            col_types  = col_pa,
+            na         = c("", "NA", "NULL")
+        )
+
+setDT(pa_tbl)
+
+```
+
+3. Merging data
+```{r, eval=TRUE}
+combined_data <- merge(x = assignee_tbl, y = pa_tbl, 
+                       by.x    = "id", 
+                       by.y    = "assignee_id")
+
+combined_data %>% glimpse()
+```
+
+4. Wrangling
+The following code selects all US companies (where type = 2) and sorts in ascending order the number of patents.
+```{r, eval=TRUE}
+us_patent_companies <-  combined_data[type==2,.N, by=organization][order(N, decreasing=TRUE)]
+head(us_patent_companies,10) #prints out top 10 companies and number of patents
+```
+
+### Challenge 2: Recent patent activity
+Problem: Which US companies listed the most patents in 2019? Top 10.
+
+1. Load needed libraries
+same as in Challenge 1 and lubridate
+```{r, eval=TRUE}
+library(lubridate)
+```
+
+2. Load the patent data from patentsview.org
+load the following tables:
+- assignee table (done in Challenge 1)
+- patent_assignee table (done in Challenge 1)
+- patent table
+
+```{r, eval=TRUE}
+
+# load patent table as data.table
+# skip all the columns but id and date since the criteria is 2019
+
+col_patent <- list(
+  id = col_character(),
+  type = col_skip(),
+  number = col_skip(),
+  country = col_skip(),
+  date = col_date("%Y-%m-%d"),
+  abstract = col_skip(),
+  title = col_skip(),
+  kind = col_skip(),
+  num_claims = col_skip(),
+  filename = col_skip(),
+  withdrawn = col_skip()
+)
+
+patent_tbl <- vroom(
+            file       = "00_data/patent.tsv", 
+            delim      = "\t", 
+            col_types  = col_patent,
+            na         = c("", "NA", "NULL")
+        )
+
+setDT(patent_tbl)
+
+```
+
+3. Merging data
+```{r, eval=TRUE}
+combined_data2 <- merge(x = combined_data, y = patent_tbl, 
+                       by.x    = "patent_id", 
+                       by.y    = "id")
+
+combined_data2 %>% glimpse()
+```
+
+4. Wrangling
+```{r, eval=TRUE}
+#create new "year" column
+combined_data2[, year := year(date) ]
+
+#select all data where year = 2019 and other condition from challenge 1
+us19_patents <- combined_data2[type==2 & year==2019,.N,by=organization][order(N, decreasing=TRUE)]
+
+# print top 10 companies with most patents in 2019
+head(us19_patents,10)
+```
+### Challenge 3: Innovation in Tech
+Problem: What is the most innovative (most patents) Tech sector worldwide? for the top 10 companies & What are the top 5 uscp main classes ?
+
+1. Load needed libraries
+same as in Challenge 1 & 2
+
+2. Load the patent data from patentsview.org
+load the following tables:
+- assignee table (done in Challenge 1)
+- patent_assignee table (done in Challenge 1)
+- uspc table
+- mainclass_current
+
+```{r, eval=TRUE}
+
+# load uspc table as data.table
+# skip all the columns but id and date since the criteria is 2019
+
+col_uspc <- list(
+  uuid = col_character(),
+  patent_id = col_character(),
+  mainclass_id = col_character(),
+  subclass_id = col_character(),
+  sequence = col_integer()
+)
+
+uspc_tbl <- vroom(
+            file       = "00_data/uspc.tsv", 
+            delim      = "\t", 
+            col_types  = col_uspc,
+            na         = c("", "NA", "NULL")
+        )
+
+setDT(uspc_tbl)
+
+
+#load mainclass_current table
+
+col_mainclass <- list(
+  id = col_character(),
+  title = col_character())
+
+mainclass_tbl <- vroom(
+            file       = "00_data/mainclass_current.tsv", 
+            delim      = "\t", 
+            col_types  = col_mainclass,
+            na         = c("", "NA", "NULL")
+        )
+
+setDT(mainclass_tbl)
+```
+
+3. Merging data
+```{r, eval=TRUE}
+combined_data3 <- merge(x = combined_data, y = uspc_tbl, 
+                       by    = "patent_id")
+
+combined_data3 <- merge(x = combined_data3, y = mainclass_tbl, 
+                       by.x    = "mainclass_id",
+                       by.y    = "id")
+
+combined_data3 %>% glimpse()
+```
+
+4. Wrangling
+```{r, eval=TRUE}
+# order all main classes after the number of patents (all time)
+tech_sectors <- combined_data3[,.N,by=title][order(N,decreasing=TRUE)]
+tech_sectors %>% head(10)
+
+
+#selecting top 10 worldwide organizations with most patents
+world_companies <- combined_data3[!is.na(organization),.N,by=organization][order(N, decreasing=TRUE)][1:10,organization]
+
+#selecting all patent data from the companies selected above by mainclass_id and order after number of patents
+main_classes <- combined_data3[organization %in% world_companies][!(title=="DOES NOT EXIST"),.N,by=title][order(N, decreasing=TRUE)]
+main_classes %>% head(5) #shows the top 5 technology sectors with highest number of patents
+
+```
+Summary:
+- Most patents belong to the category: Organic Compounds
+- Most patents from the top 10 most innovative companies belong to the category: Active Solid-State Devices
+
