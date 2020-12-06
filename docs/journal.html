@@ -410,9 +410,7 @@ div.tocify {
 </div>
 
 
-<p><strong>IMPORTANT:</strong> You can delete everything in here and start fresh. You might want to start by not deleting anything above this line until you know what that stuff is doing.</p>
-<p>Last compiled: 2020-12-05</p>
-<p>This is an <code>.Rmd</code> file. It is plain text with special features. Any time you write just like this, it will be compiled to normal text in the website. If you put a # in front of your text, it will create a top level-header.</p>
+<p><strong>IMPORTANT:</strong> Uploaded on 06.12.2020</p>
 <div id="introduction-to-the-tidyverse" class="section level1">
 <h1><span class="header-section-number">1</span> Introduction to the tidyverse</h1>
 <div id="challenges" class="section level2">
@@ -522,7 +520,7 @@ joined_data &lt;- left_join(orders_shops_joined, bikes, by=c(&quot;product_id&qu
 </div>
 <div id="analysis-of-bike-sales-by-state-and-year" class="section level3">
 <h3><span class="header-section-number">1.1.2</span> Analysis of bike sales by state and year</h3>
-<p>Steps 1 to 3 remain the same as in 1.</p>
+<p>Steps 1 to 3 remain the same as in 1.1.1.</p>
 <ol start="4" style="list-style-type: decimal">
 <li>Manipulating getting the sales by state and year:</li>
 </ol>
@@ -587,15 +585,25 @@ library(lubridate)</code></pre>
 <ol start="2" style="list-style-type: decimal">
 <li>Build the request url / query string</li>
 </ol>
-<pre class="r"><code>API_KEY &lt;- read_tsv(&quot;00_data/apikey.txt&quot;)
+<pre class="r"><code>API_KEY &lt;- read_file(&quot;00_data/apikey.txt&quot;)
 symbol = &quot;AMZN&quot;    # ticker for the Amazon stock
 limit = &quot;300&quot;      # number of days, approx. 300 trading days a year
 url = glue(&#39;http://api.marketstack.com/v1/eod?access_key={API_KEY}&amp;symbols={symbol}&amp;limit=300&#39;)</code></pre>
 <ol start="3" style="list-style-type: decimal">
 <li>Getting the data</li>
 </ol>
-<pre class="r"><code>amzn &lt;- GET(url) %&gt;% .$content %&gt;% rawToChar() %&gt;% fromJSON() %&gt;% .$data %&gt;% as_tibble() %&gt;% select(adj_close, date)
+<pre class="r"><code>amzn &lt;- GET(url) %&gt;% .$content %&gt;% rawToChar() %&gt;% fromJSON() %&gt;% .$data %&gt;% as_tibble() #%&gt;% select(adj_close, date)
 head(amzn)</code></pre>
+<pre><code>## # A tibble: 6 x 13
+##    open  high   low close volume adj_high adj_low adj_close adj_open adj_volume
+##   &lt;dbl&gt; &lt;dbl&gt; &lt;dbl&gt; &lt;dbl&gt;  &lt;dbl&gt;    &lt;dbl&gt;   &lt;dbl&gt;     &lt;dbl&gt;    &lt;dbl&gt;      &lt;dbl&gt;
+## 1 3198. 3198. 3159. 3163. 2.91e6    3198.   3159.     3163.    3198.    2913611
+## 2 3205. 3229. 3181. 3187. 2.89e6    3229.   3181.     3187.    3205.    2892039
+## 3 3222. 3232  3173. 3204. 3.13e6    3232    3173.     3204.    3222.    3129304
+## 4 3188. 3249. 3157. 3220. 4.49e6    3249.   3157.     3220.    3188.    4493554
+## 5 3208. 3228. 3126. 3168. 4.06e6    3228.   3126.     3168.    3208.    4063916
+## 6 3211. 3216. 3190. 3195. 2.39e6    3216.   3190.     3195.    3211.    2392867
+## # … with 3 more variables: symbol &lt;chr&gt;, exchange &lt;chr&gt;, date &lt;chr&gt;</code></pre>
 <ol start="4" style="list-style-type: decimal">
 <li>Visualization Plotting the adjusted close over the last year.</li>
 </ol>
@@ -605,6 +613,7 @@ ggplot(data=amzn, aes(x=date, y= adj_close)) +
   labs(x = &quot;Date&quot;, 
        y = &quot;Adjusted closing Price&quot;,
        title = &quot;Amazon stock price&quot;)</code></pre>
+<p><img src="journal_files/figure-html/unnamed-chunk-12-1.png" width="672" /></p>
 </div>
 <div id="webscraping" class="section level3">
 <h3><span class="header-section-number">2.1.2</span> Webscraping</h3>
@@ -694,7 +703,8 @@ bike_categories &lt;- road_bikes_html %&gt;%
   model_infos &lt;- html_body %&gt;% 
     html_nodes(css=&quot;.catalog-category-model-info__list&quot;) %&gt;%
     html_text() %&gt;%
-    enframe(name=&quot;position&quot;, value=&quot;infos&quot;)
+    enframe(name=&quot;position&quot;, value=&quot;infos&quot;) %&gt;%
+    separate(infos, c(&quot;weight&quot;, &quot;wheel&quot;, &quot;equipment&quot;), &quot;\n\n\n&quot;)
 
   model_prices &lt;- html_body %&gt;% 
     html_nodes(css=&quot;.product-tile-price__current-value.catalog-category-model__price-current-value&quot;) %&gt;%
@@ -713,15 +723,15 @@ for (i in 2:length(bike_categories$url)) {
 }
 
 head(bike_data)</code></pre>
-<pre><code>## # A tibble: 6 x 4
-##   position model_name           infos                                  price    
-##      &lt;int&gt; &lt;chr&gt;                &lt;chr&gt;                                  &lt;chr&gt;    
-## 1        1 &quot;\nPRO SL DISC 105\… &quot;\nGewicht: 9,0 kg\n\n\nLaufrad: DT S… &quot;\n1.599…
-## 2        2 &quot;\nPRO SL DISC Ulte… &quot;\nGewicht: 8,9 kg\n\n\nLaufrad: DT S… &quot;\n1.899…
-## 3        1 &quot;\nPRO SL 105\n&quot;     &quot;\nGewicht: 8,5 kg\n\n\nLaufrad: DT S… &quot;\n1.199…
-## 4        2 &quot;\nPRO SL Ultegra\n&quot; &quot;\nGewicht: 8,3 kg\n\n\nLaufrad: DT S… &quot;\n1.499…
-## 5        1 &quot;\nREVEAL FOUR DISC… &quot;\nGewicht: 8,1 kg\n\n\nLaufrad: ROSE… &quot;\n2.499…
-## 6        2 &quot;\nREVEAL FOUR DISC… &quot;\nGewicht: 8,0 kg\n\n\nLaufrad: ROSE… &quot;\n2.799…</code></pre>
+<pre><code>## # A tibble: 6 x 6
+##   position model_name      weight    wheel               equipment       price  
+##      &lt;int&gt; &lt;chr&gt;           &lt;chr&gt;     &lt;chr&gt;               &lt;chr&gt;           &lt;chr&gt;  
+## 1        1 &quot;\nPRO SL DISC… &quot;\nGewic… Laufrad: DT Swiss … &quot;Ausstattung: … &quot;\n1.5…
+## 2        2 &quot;\nPRO SL DISC… &quot;\nGewic… Laufrad: DT Swiss … &quot;Ausstattung: … &quot;\n1.8…
+## 3        1 &quot;\nPRO SL 105\… &quot;\nGewic… Laufrad: DT Swiss … &quot;Ausstattung: … &quot;\n1.1…
+## 4        2 &quot;\nPRO SL Ulte… &quot;\nGewic… Laufrad: DT Swiss … &quot;Ausstattung: … &quot;\n1.4…
+## 5        1 &quot;\nREVEAL FOUR… &quot;\nGewic… Laufrad: ROSE - La… &quot;Ausstattung: … &quot;\n2.4…
+## 6        2 &quot;\nREVEAL FOUR… &quot;\nGewic… Laufrad: ROSE - La… &quot;Ausstattung: … &quot;\n2.7…</code></pre>
 <p>In the tibble bike_data, the data for all bikes in the family ‘Rennrad’ are displayed with additional information like price, weight and equipment.</p>
 </div>
 </div>
@@ -999,7 +1009,194 @@ main_classes %&gt;% head(5) #shows the top 5 technology sectors with highest num
 ## 3:                           STATIC INFORMATION STORAGE AND RETRIEVAL 41338
 ## 4:                                                 TELECOMMUNICATIONS 36627
 ## 5:                                           MULTIPLEX COMMUNICATIONS 36588</code></pre>
-<p>Summary: - Most patents belong to the category: Organic Compounds - Most patents from the top 10 most innovative companies belong to the category: Active Solid-State Devices</p>
+<p>Summary:</p>
+<ul>
+<li><p>Most patents belong to the category: Organic Compounds</p></li>
+<li><p>Most patents from the top 10 most innovative companies belong to the category: Active Solid-State Devices</p></li>
+</ul>
+</div>
+</div>
+</div>
+<div id="data-visualization" class="section level1">
+<h1><span class="header-section-number">4</span> Data Visualization</h1>
+<div id="challenges-3" class="section level2">
+<h2><span class="header-section-number">4.1</span> Challenges</h2>
+<p>Load covid-19 data:</p>
+<pre class="r"><code>library(tidyverse)
+covid_data_tbl &lt;- read_csv(&quot;https://opendata.ecdc.europa.eu/covid19/casedistribution/csv&quot;)</code></pre>
+<div id="challenge-1-covid-19-cases" class="section level3">
+<h3><span class="header-section-number">4.1.1</span> Challenge 1: Covid-19 cases</h3>
+<p>Problem: Plot the cumulative covid-19 cases.</p>
+<ol style="list-style-type: decimal">
+<li>Load needed libraries</li>
+</ol>
+<pre class="r"><code>library(lubridate)
+library(ggplot2)
+library(ggrepel)</code></pre>
+<ol start="2" style="list-style-type: decimal">
+<li>Data Manipulation</li>
+</ol>
+<pre class="r"><code>#covid_data_tbl$countriesAndTerritories %&gt;% unique()
+
+countries &lt;- c(&quot;Germany&quot;, &quot;United_Kingdom&quot;, &quot;France&quot;, &quot;Spain&quot;, &quot;United_States_of_America&quot;)
+
+cum_covid_cases &lt;- covid_data_tbl %&gt;% 
+  
+  #select and filter needed columns and countries
+  select(cases, dateRep, countriesAndTerritories) %&gt;%
+  filter(countriesAndTerritories %in% countries) %&gt;%
+  
+  #to date 
+  mutate(date=dmy(dateRep)) %&gt;% 
+  select(-dateRep) %&gt;%
+  
+  #one column for each country
+  pivot_wider(names_from=countriesAndTerritories, values_from=cases) %&gt;%
+  arrange(date) %&gt;%
+  
+  #cumulative sums
+  mutate(csGermany=cumsum(Germany), csFrance=cumsum(France), csUS=cumsum(United_States_of_America), csSpain=cumsum(Spain), csUK=cumsum(United_Kingdom)) %&gt;%
+  
+  #for the major countries in Europe
+  mutate(csEurope=csGermany+csFrance+csSpain+csUK)
+  
+
+cum_covid_cases %&gt;% tail(15)</code></pre>
+<pre><code>## # A tibble: 15 x 12
+##    date       France Germany Spain United_Kingdom United_States_o… csGermany
+##    &lt;date&gt;      &lt;dbl&gt;   &lt;dbl&gt; &lt;dbl&gt;          &lt;dbl&gt;            &lt;dbl&gt;     &lt;dbl&gt;
+##  1 2020-11-22  17881   15741     0          19875           175494    918269
+##  2 2020-11-23  13157   10864 25886          18662           157471    929133
+##  3 2020-11-24   4452   13554 12228          15450           173963    942687
+##  4 2020-11-25   9155   18633 10222          11299           170293    961320
+##  5 2020-11-26  16282   22268 12289          18213           186589    983588
+##  6 2020-11-27  13563   22806 10853          17555           106091   1006394
+##  7 2020-11-28  12539   21695     0          14739           207913   1028089
+##  8 2020-11-29  12500   14611     0          15871           154893   1042700
+##  9 2020-11-30   9784   11169 19979          12155           136670   1053869
+## 10 2020-12-01   4005   13604  8257          12330           157903   1067473
+## 11 2020-12-02   8083   17270  9331          13429           180421   1084743
+## 12 2020-12-03  14064   22046 10127          16170           203311   1106789
+## 13 2020-12-04  12696   23448  8745          14878           214747   1130237
+## 14 2020-12-05  11221   23318     0          16298           231930   1153555
+## 15 2020-12-06  12923   17767    NA          15539           211933   1171322
+## # … with 5 more variables: csFrance &lt;dbl&gt;, csUS &lt;dbl&gt;, csSpain &lt;dbl&gt;,
+## #   csUK &lt;dbl&gt;, csEurope &lt;dbl&gt;</code></pre>
+<ol start="3" style="list-style-type: decimal">
+<li>Visualization</li>
+</ol>
+<pre class="r"><code># Data Visualization
+cum_covid_cases %&gt;%
+    
+    # Canvas
+    ggplot(aes(date)) +
+    
+    # Geometries
+  
+    geom_line(aes(y=csGermany, color = &quot;Germany&quot;)) +
+    
+    geom_line(aes(y=csFrance, color = &quot;France&quot;)) +
+    
+    geom_line(aes(y=csSpain, color = &quot;Spain&quot;)) +
+  
+    geom_line(aes(y=csUK, color = &quot;UK&quot;)) +
+  
+    geom_line(aes(y=csUS, color = &quot;US&quot;)) +
+  
+    geom_line(aes(y=csEurope, color = &quot;maj. EU&quot;)) +
+    
+    geom_label(data = cum_covid_cases %&gt;% filter(csUS == max(csUS)), aes(label = max(csUS), x=today()-10, y=max(csUS)), size=2) + 
+    #adding &#39;, color=&quot;US&quot;&#39; to aes() as argument makes the colored line in the legend to an &quot;a&quot;
+    
+    # Formatting
+    labs(
+      title = &quot;Covid-19 confirmed cases worldwide&quot;,
+      subtitle = &quot;as of January 1st&quot;,
+      x = &quot;Year 2020&quot;,
+      y = &quot;Cumulative Cases&quot;,
+      color = &quot;Country/Continent&quot;
+    ) +
+  
+    scale_color_brewer(type=&quot;qual&quot;, palette = 2) +
+  
+    scale_y_continuous(labels = scales::dollar_format(scale = 1e-6,
+                                                      decimal.mark = &quot;,&quot;,
+                                                      prefix = &quot;&quot;,
+                                                      suffix = &quot; M&quot;)) +
+    scale_x_date(date_breaks = &quot;1 month&quot;, date_labels =  &quot;%B&quot;) +
+    
+    theme_light() +
+    theme(
+        axis.text.x=element_text(angle=50, hjust=1),
+        legend.position = &quot;bottom&quot;,
+        plot.title = element_text(face = &quot;bold&quot;)
+    )</code></pre>
+<p><img src="journal_files/figure-html/unnamed-chunk-31-1.png" width="672" /></p>
+</div>
+<div id="challenge-2-mortality-rate" class="section level3">
+<h3><span class="header-section-number">4.1.2</span> Challenge 2: Mortality rate</h3>
+<p>Problem: Plot the cumulative covid-19 cases.</p>
+<ol style="list-style-type: decimal">
+<li>Load needed libraries</li>
+</ol>
+<pre class="r"><code>library(ggplot2)
+library(maps)
+library(lubridate)
+library(RColorBrewer)</code></pre>
+<ol start="2" style="list-style-type: decimal">
+<li>Data Manipulation</li>
+</ol>
+<pre class="r"><code>world &lt;- map_data(&quot;world&quot;)
+
+
+covid_mapping_data &lt;- covid_data_tbl %&gt;%
+  
+  #selection
+  select(countriesAndTerritories, popData2019, deaths) %&gt;%
+  
+  # change country names
+  mutate(across(countriesAndTerritories, str_replace_all, &quot;_&quot;, &quot; &quot;)) %&gt;%
+  mutate(countriesAndTerritories = case_when(
+    countriesAndTerritories == &quot;United Kingdom&quot; ~ &quot;UK&quot;,
+    countriesAndTerritories == &quot;United States of America&quot; ~ &quot;USA&quot;,
+    countriesAndTerritories == &quot;Czechia&quot; ~ &quot;Czech Republic&quot;,
+    TRUE ~ countriesAndTerritories
+  )) %&gt;%
+
+  #group and summarize
+  group_by(countriesAndTerritories) %&gt;%
+  summarize(total_deaths=sum(deaths), total_population=unique(popData2019)) %&gt;%
+  ungroup() %&gt;%
+  
+  #calculate mortality rate in %
+  mutate(mrate= 100*total_deaths/total_population) %&gt;%
+  
+  #join world table
+  left_join(world, by=c(&quot;countriesAndTerritories&quot;=&quot;region&quot;))</code></pre>
+<ol start="3" style="list-style-type: decimal">
+<li>Visualization</li>
+</ol>
+<pre class="r"><code>covid_mapping_data %&gt;% 
+  
+  ggplot(aes(x=long, y=lat)) +
+  
+  geom_map(aes(map_id=countriesAndTerritories, fill=mrate), map=world) +
+  
+  #Formatting
+  labs(
+      title = &quot;Covid-19 mortality rate by country&quot;,
+      subtitle = &quot;deaths since January 1st&quot;,
+      x = &quot;longitude&quot;,
+      y = &quot;latitude&quot;
+    ) +
+  
+    scale_fill_gradientn(&quot;Mortality Rate in %&quot;,colours=brewer.pal(1,&quot;YlOrRd&quot;)) +
+
+    theme_light() +
+    theme(
+        plot.title = element_text(face = &quot;bold&quot;)
+    )</code></pre>
+<p><img src="journal_files/figure-html/unnamed-chunk-34-1.png" width="672" /></p>
 </div>
 </div>
 </div>

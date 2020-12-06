@@ -1,7 +1,7 @@
 ---
 title: "Journal"
 author: "Roman Neubauer"
-date: "2020-11-05"
+date: "2020-12-06"
 output:
   html_document:
     toc: true
@@ -16,11 +16,7 @@ output:
 knitr::opts_chunk$set(message=FALSE,warning=FALSE, cache=TRUE, cache.lazy = FALSE)
 ```
 
-**IMPORTANT:** You can delete everything in here and start fresh. You might want to start by not deleting anything above this line until you know what that stuff is doing.
-
-Last compiled: `r Sys.Date()`
-
-This is an `.Rmd` file. It is plain text with special features. Any time you write just like this, it will be compiled to normal text in the website. If you put a \# in front of your text, it will create a top level-header.
+**IMPORTANT:** Student Nbr.: 21651881
 
 # Introduction to the tidyverse
 ## Challenges
@@ -143,7 +139,7 @@ sales_by_city %>%
 ```
 
 ### Analysis of bike sales by state and year
-Steps 1 to 3 remain the same as in 1. 
+Steps 1 to 3 remain the same as in 1.1.1. 
 
 4. Manipulating
 getting the sales by state and year:
@@ -199,7 +195,7 @@ Problem: Acquiring data from an API for a data scientific purpose.
 In the following code financial data will be requested from marketstack.com, which provide an API. For the sake of this example, the adjusted daily closing price of Amazon stock will be requested for the time period of one year. A free access to marketstack's API is granted after signing up and getting an API key, which will be used to authenticate all requests.
 
 1. Load needed libraries
-```{r, eval=FALSE}
+```{r, eval=TRUE}
 library(readr)
 library(httr)
 library(glue)
@@ -210,22 +206,22 @@ library(lubridate)
 ```
 
 2. Build the request url / query string
-```{r, eval=FALSE}
-API_KEY <- read_tsv("00_data/apikey.txt")
+```{r, eval=TRUE}
+API_KEY <- read_file("00_data/apikey.txt")
 symbol = "AMZN"    # ticker for the Amazon stock
 limit = "300"      # number of days, approx. 300 trading days a year
 url = glue('http://api.marketstack.com/v1/eod?access_key={API_KEY}&symbols={symbol}&limit=300')
 ```
 
 3. Getting the data
-```{r, eval=FALSE}
-amzn <- GET(url) %>% .$content %>% rawToChar() %>% fromJSON() %>% .$data %>% as_tibble() %>% select(adj_close, date)
+```{r, eval=TRUE}
+amzn <- GET(url) %>% .$content %>% rawToChar() %>% fromJSON() %>% .$data %>% as_tibble() #%>% select(adj_close, date)
 head(amzn)
 ```
 
 4. Visualization
 Plotting the adjusted close over the last year.
-```{r, eval = FALSE}
+```{r, eval = TRUE}
 amzn$date <- as.Date(amzn$date, format="%Y-%m-%dT00:00:00+0000")
 ggplot(data=amzn, aes(x=date, y= adj_close)) + 
   geom_line(color="#2DC6D6") + 
@@ -320,7 +316,8 @@ get_bike_data <- function(url) {
   model_infos <- html_body %>% 
     html_nodes(css=".catalog-category-model-info__list") %>%
     html_text() %>%
-    enframe(name="position", value="infos")
+    enframe(name="position", value="infos") %>%
+    separate(infos, c("weight", "wheel", "equipment"), "\n\n\n")
 
   model_prices <- html_body %>% 
     html_nodes(css=".product-tile-price__current-value.catalog-category-model__price-current-value") %>%
@@ -563,6 +560,184 @@ main_classes %>% head(5) #shows the top 5 technology sectors with highest number
 
 ```
 Summary:
+
 - Most patents belong to the category: Organic Compounds
+
 - Most patents from the top 10 most innovative companies belong to the category: Active Solid-State Devices
+
+
+# Data Visualization
+## Challenges
+Load covid-19 data:
+```{r, eval=TRUE}
+library(tidyverse)
+covid_data_tbl <- read_csv("https://opendata.ecdc.europa.eu/covid19/casedistribution/csv")
+```
+
+### Challenge 1: Covid-19 cases
+Problem: Plot the cumulative covid-19 cases.
+
+1. Load needed libraries
+```{r, eval=TRUE}
+library(lubridate)
+library(ggplot2)
+library(ggrepel)
+```
+
+2. Data Manipulation
+```{r, eval=TRUE}
+#covid_data_tbl$countriesAndTerritories %>% unique()
+
+countries <- c("Germany", "United_Kingdom", "France", "Spain", "United_States_of_America")
+
+cum_covid_cases <- covid_data_tbl %>% 
+  
+  #select and filter needed columns and countries
+  select(cases, dateRep, countriesAndTerritories) %>%
+  filter(countriesAndTerritories %in% countries) %>%
+  
+  #to date 
+  mutate(date=dmy(dateRep)) %>% 
+  select(-dateRep) %>%
+  
+  #one column for each country
+  pivot_wider(names_from=countriesAndTerritories, values_from=cases) %>%
+  arrange(date) %>%
+  
+  #cumulative sums
+  mutate(csGermany=cumsum(Germany), csFrance=cumsum(France), csUS=cumsum(United_States_of_America), csSpain=cumsum(Spain), csUK=cumsum(United_Kingdom)) %>%
+  
+  #for the major countries in Europe
+  mutate(csEurope=csGermany+csFrance+csSpain+csUK)
+  
+
+cum_covid_cases %>% tail(15)
+
+```
+
+3. Visualization
+
+```{r, eval=TRUE}
+# Data Visualization
+cum_covid_cases %>%
+    
+    # Canvas
+    ggplot(aes(date)) +
+    
+    # Geometries
+  
+    geom_line(aes(y=csGermany, color = "Germany")) +
+    
+    geom_line(aes(y=csFrance, color = "France")) +
+    
+    geom_line(aes(y=csSpain, color = "Spain")) +
+  
+    geom_line(aes(y=csUK, color = "UK")) +
+  
+    geom_line(aes(y=csUS, color = "US")) +
+  
+    geom_line(aes(y=csEurope, color = "maj. EU")) +
+    
+    geom_label(data = cum_covid_cases %>% filter(csUS == max(csUS)), aes(label = max(csUS), x=today()-10, y=max(csUS)), size=2) + 
+    #adding ', color="US"' to aes() as argument makes the colored line in the legend to an "a"
+    
+    # Formatting
+    labs(
+      title = "Covid-19 confirmed cases worldwide",
+      subtitle = "as of January 1st",
+      x = "Year 2020",
+      y = "Cumulative Cases",
+      color = "Country/Continent"
+    ) +
+  
+    scale_color_brewer(type="qual", palette = 2) +
+  
+    scale_y_continuous(labels = scales::dollar_format(scale = 1e-6,
+                                                      decimal.mark = ",",
+                                                      prefix = "",
+                                                      suffix = " M")) +
+    scale_x_date(date_breaks = "1 month", date_labels =  "%B") +
+    
+    theme_light() +
+    theme(
+        axis.text.x=element_text(angle=50, hjust=1),
+        legend.position = "bottom",
+        plot.title = element_text(face = "bold")
+    )
+
+
+```
+
+### Challenge 2: Mortality rate
+Problem: Plot the cumulative covid-19 cases.
+
+1. Load needed libraries
+```{r, eval=TRUE}
+library(ggplot2)
+library(maps)
+library(lubridate)
+library(RColorBrewer)
+```
+
+2. Data Manipulation
+```{r, eval=TRUE}
+world <- map_data("world")
+
+
+covid_mapping_data <- covid_data_tbl %>%
+  
+  #selection
+  select(countriesAndTerritories, popData2019, deaths) %>%
+  
+  # change country names
+  mutate(across(countriesAndTerritories, str_replace_all, "_", " ")) %>%
+  mutate(countriesAndTerritories = case_when(
+    countriesAndTerritories == "United Kingdom" ~ "UK",
+    countriesAndTerritories == "United States of America" ~ "USA",
+    countriesAndTerritories == "Czechia" ~ "Czech Republic",
+    TRUE ~ countriesAndTerritories
+  )) %>%
+
+  #group and summarize
+  group_by(countriesAndTerritories) %>%
+  summarize(total_deaths=sum(deaths), total_population=unique(popData2019)) %>%
+  ungroup() %>%
+  
+  #calculate mortality rate in %
+  mutate(mrate= 100*total_deaths/total_population) %>%
+  
+  #join world table
+  left_join(world, by=c("countriesAndTerritories"="region"))
+
+```
+
+3. Visualization
+
+```{r, eval=TRUE}
+
+covid_mapping_data %>% 
+  
+  ggplot(aes(x=long, y=lat)) +
+  
+  geom_map(aes(map_id=countriesAndTerritories, fill=mrate), map=world) +
+  
+  #Formatting
+  labs(
+      title = "Covid-19 mortality rate by country",
+      subtitle = "deaths since January 1st",
+      x = "longitude",
+      y = "latitude"
+    ) +
+  
+    scale_fill_gradientn("Mortality Rate in %",colours=brewer.pal(1,"YlOrRd")) +
+
+    theme_light() +
+    theme(
+        plot.title = element_text(face = "bold")
+    )
+  
+
+
+```
+
 
